@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package pulpfs;
+
+service Meta {
+  rpc Mkdir(MkdirRequest) returns (MkdirReply) {}
+  rpc CreateFile(CreateFileRequest) returns (CreateFileReply) {}
+  rpc Lookup(LookupRequest) returns (LookupReply) {}
+  rpc GetAttr(GetAttrRequest) returns (GetAttrReply) {}
+  rpc SetAttr(SetAttrRequest) returns (SetAttrReply) {}
+  rpc ReadDir(ReadDirRequest) returns (ReadDirReply) {}
+  rpc Unlink(UnlinkRequest) returns (UnlinkReply) {}
+  rpc Rmdir(RmdirRequest) returns (RmdirReply) {}
+  rpc Rename(RenameRequest) returns (RenameReply) {}
+  rpc GetLayout(GetLayoutRequest) returns (GetLayoutReply) {}
+  rpc ListLiveObjects(ListLiveObjectsRequest) returns (ListLiveObjectsReply) {}
+  rpc CommitWrite(CommitWriteRequest) returns (CommitWriteReply) {}
+  rpc AppendWrite(AppendWriteRequest) returns (AppendWriteReply) {}
+  rpc Truncate(TruncateRequest) returns (TruncateReply) {}
+}
+
+enum InodeType {
+  INODE_TYPE_UNSPECIFIED = 0;
+  INODE_TYPE_FILE = 1;
+  INODE_TYPE_DIRECTORY = 2;
+}
+
+message InodeAttrs {
+  uint64 inode_id = 1;
+  InodeType type = 2;
+  uint32 mode = 3;
+  uint32 uid = 4;
+  uint32 gid = 5;
+  uint64 size = 6;
+  uint64 nlink = 7;
+  uint64 version = 8;
+  int64 atime_ns = 9;
+  int64 mtime_ns = 10;
+  int64 ctime_ns = 11;
+  uint64 chunk_size = 12;
+}
+
+message DirectoryEntry {
+  string name = 1;
+  InodeAttrs attrs = 2;
+}
+
+message FileExtent {
+  uint64 offset = 1;
+  uint64 length = 2;
+  string object_key = 3;
+  string etag = 4;
+  string checksum = 5;
+  uint64 object_size = 6;
+  uint64 object_offset = 7;
+}
+
+message FileLayout {
+  InodeAttrs attrs = 1;
+  uint64 chunk_size = 2;
+  repeated FileExtent extents = 3;
+}
+
+message MkdirRequest {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+  uint32 mode = 3;
+  uint32 uid = 4;
+  uint32 gid = 5;
+}
+
+message MkdirReply {
+  InodeAttrs attrs = 1;
+}
+
+message CreateFileRequest {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+  uint32 mode = 3;
+  uint32 uid = 4;
+  uint32 gid = 5;
+}
+
+message CreateFileReply {
+  InodeAttrs attrs = 1;
+}
+
+message LookupRequest {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+}
+
+message LookupReply {
+  InodeAttrs attrs = 1;
+}
+
+message GetAttrRequest {
+  uint64 inode_id = 1;
+}
+
+message GetAttrReply {
+  InodeAttrs attrs = 1;
+}
+
+message SetAttrRequest {
+  uint64 inode_id = 1;
+  bool set_mode = 2;
+  uint32 mode = 3;
+  bool set_uid = 4;
+  uint32 uid = 5;
+  bool set_gid = 6;
+  uint32 gid = 7;
+  bool set_atime = 8;
+  int64 atime_ns = 9;
+  bool set_mtime = 10;
+  int64 mtime_ns = 11;
+}
+
+message SetAttrReply {
+  InodeAttrs attrs = 1;
+}
+
+message ReadDirRequest {
+  uint64 inode_id = 1;
+}
+
+message ReadDirReply {
+  repeated DirectoryEntry entries = 1;
+}
+
+message UnlinkRequest {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+}
+
+message UnlinkReply {
+  InodeAttrs attrs = 1;
+}
+
+message RmdirRequest {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+}
+
+message RmdirReply {
+  InodeAttrs attrs = 1;
+}
+
+message RenameRequest {
+  uint64 old_parent_inode_id = 1;
+  string old_name = 2;
+  uint64 new_parent_inode_id = 3;
+  string new_name = 4;
+}
+
+message RenameReply {
+  InodeAttrs attrs = 1;
+}
+
+message GetLayoutRequest {
+  uint64 inode_id = 1;
+}
+
+message GetLayoutReply {
+  FileLayout layout = 1;
+}
+
+message ListLiveObjectsRequest {}
+
+message ListLiveObjectsReply {
+  repeated string object_keys = 1;
+}
+
+message CommitWriteRequest {
+  uint64 inode_id = 1;
+  uint64 base_version = 2;
+  repeated FileExtent extents = 3;
+}
+
+message CommitWriteReply {
+  InodeAttrs attrs = 1;
+}
+
+message AppendWriteRequest {
+  uint64 inode_id = 1;
+  uint64 base_version = 2;
+  repeated FileExtent extents = 3;
+}
+
+message AppendWriteReply {
+  InodeAttrs attrs = 1;
+  uint64 append_start = 2;
+  repeated FileExtent committed_extents = 3;
+}
+
+message TruncateRequest {
+  uint64 inode_id = 1;
+  uint64 size = 2;
+}
+
+message TruncateReply {
+  InodeAttrs attrs = 1;
+}
+
+message MkdirCommand {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+  uint32 mode = 3;
+  uint32 uid = 4;
+  uint32 gid = 5;
+}
+
+message CreateFileCommand {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+  uint32 mode = 3;
+  uint32 uid = 4;
+  uint32 gid = 5;
+}
+
+message SetAttrCommand {
+  uint64 inode_id = 1;
+  bool set_mode = 2;
+  uint32 mode = 3;
+  bool set_uid = 4;
+  uint32 uid = 5;
+  bool set_gid = 6;
+  uint32 gid = 7;
+  bool set_atime = 8;
+  int64 atime_ns = 9;
+  bool set_mtime = 10;
+  int64 mtime_ns = 11;
+}
+
+message UnlinkCommand {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+}
+
+message RmdirCommand {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+}
+
+message RenameCommand {
+  uint64 old_parent_inode_id = 1;
+  string old_name = 2;
+  uint64 new_parent_inode_id = 3;
+  string new_name = 4;
+}
+
+message CommitWriteCommand {
+  uint64 inode_id = 1;
+  uint64 base_version = 2;
+  repeated FileExtent extents = 3;
+}
+
+message AppendWriteCommand {
+  uint64 inode_id = 1;
+  uint64 base_version = 2;
+  repeated FileExtent extents = 3;
+}
+
+message TruncateCommand {
+  uint64 inode_id = 1;
+  uint64 size = 2;
+}
+
+message RaftCommand {
+  oneof command {
+    MkdirCommand mkdir = 1;
+    CreateFileCommand create_file = 2;
+    CommitWriteCommand commit_write = 3;
+    TruncateCommand truncate = 4;
+    UnlinkCommand unlink = 5;
+    RmdirCommand rmdir = 6;
+    RenameCommand rename = 7;
+    SetAttrCommand set_attr = 8;
+    AppendWriteCommand append_write = 9;
+  }
+}
+
+message ErrorResponse {
+  string kind = 1;
+  string message = 2;
+  string path = 3;
+}
+
+message RaftCommandResponse {
+  oneof response {
+    InodeAttrs attrs = 1;
+    ErrorResponse error = 2;
+    AppendWriteReply append_write = 3;
+  }
+}
+
+message SnapshotLayout {
+  uint64 inode_id = 1;
+  FileLayout layout = 2;
+}
+
+message SnapshotDentry {
+  uint64 parent_inode_id = 1;
+  string name = 2;
+  uint64 child_inode_id = 3;
+}
+
+message MetaSnapshot {
+  uint64 next_inode_id = 1;
+  uint64 default_chunk_size = 2;
+  repeated InodeAttrs inodes = 3;
+  repeated SnapshotDentry dentries = 4;
+  repeated SnapshotLayout layouts = 5;
+}
