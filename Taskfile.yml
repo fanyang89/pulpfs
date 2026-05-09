@@ -1,0 +1,45 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  BUILD_DIR: '{{.BUILD_DIR | default "build"}}'
+  CMAKE_BUILD_TYPE: '{{.CMAKE_BUILD_TYPE | default "Debug"}}'
+  CMAKE_GENERATOR: '{{.CMAKE_GENERATOR | default "Ninja"}}'
+  TEST_TARGET: '{{.TEST_TARGET | default "pulpfs_unit_tests"}}'
+
+tasks:
+  configure:
+    desc: Configure CMake
+    cmds:
+      - cmake -S . -B "{{.BUILD_DIR}}" -G "{{.CMAKE_GENERATOR}}" -DCMAKE_BUILD_TYPE="{{.CMAKE_BUILD_TYPE}}"
+
+  build:
+    desc: Build pulpfs
+    deps:
+      - configure
+    cmds:
+      - cmake --build "{{.BUILD_DIR}}" --target pulpfs --parallel
+
+  test:
+    desc: Build and run tests
+    deps:
+      - configure
+    cmds:
+      - cmake --build "{{.BUILD_DIR}}" --target "{{.TEST_TARGET}}" --parallel
+      - ctest --test-dir "{{.BUILD_DIR}}" --output-on-failure
+
+  e2e:
+    desc: Build and run the e2e smoke test
+    deps:
+      - build
+    cmds:
+      - tests/e2e/smoke.sh "{{.BUILD_DIR}}/src/pulpfs"
+
+  fmt:
+    desc: Format tracked C and C++ files
+    preconditions:
+      - sh: command -v clang-format >/dev/null 2>&1
+        msg: clang-format is required
+    cmds:
+      - git ls-files -- '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx' ':!:third_party/**' | xargs clang-format -i

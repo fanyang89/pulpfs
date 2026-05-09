@@ -88,9 +88,7 @@ TEST(MetaStateTest, RejectsInvalidAndDuplicateNames) {
 
     auto first = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
     ASSERT_TRUE(first.has_value()) << ToString(first.error());
-    ExpectErrorKind<AlreadyExists>(
-        state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0)
-    );
+    ExpectErrorKind<AlreadyExists>(state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0));
 }
 
 TEST(MetaStateTest, EnforcesUnlinkAndRmdirRules) {
@@ -131,9 +129,11 @@ TEST(MetaStateTest, CommitWriteMergesOverlappingExtents) {
     auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
     ASSERT_TRUE(file.has_value()) << ToString(file.error());
 
-    auto first = state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 10, "a")}));
+    auto first =
+        state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 10, "a")}));
     ASSERT_TRUE(first.has_value()) << ToString(first.error());
-    auto second = state.CommitWrite(file->inode_id(), first->version(), Extents({MakeExtent(4, 4, "b")}));
+    auto second =
+        state.CommitWrite(file->inode_id(), first->version(), Extents({MakeExtent(4, 4, "b")}));
     ASSERT_TRUE(second.has_value()) << ToString(second.error());
 
     auto layout = state.GetLayout(file->inode_id());
@@ -156,10 +156,12 @@ TEST(MetaStateTest, AppendWriteRemapsRelativeExtents) {
     MetaState state;
     auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
     ASSERT_TRUE(file.has_value()) << ToString(file.error());
-    auto base = state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 4, "base")}));
+    auto base =
+        state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 4, "base")}));
     ASSERT_TRUE(base.has_value()) << ToString(base.error());
 
-    auto append = state.AppendWrite(file->inode_id(), base->version(), Extents({MakeExtent(0, 3, "tail")}));
+    auto append =
+        state.AppendWrite(file->inode_id(), base->version(), Extents({MakeExtent(0, 3, "tail")}));
     ASSERT_TRUE(append.has_value()) << ToString(append.error());
     EXPECT_EQ(append->append_start, 4U);
     ASSERT_EQ(append->committed_extents.size(), 1U);
@@ -177,7 +179,8 @@ TEST(MetaStateTest, TruncateSlicesExtentsAndUpdatesSize) {
     MetaState state;
     auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
     ASSERT_TRUE(file.has_value()) << ToString(file.error());
-    auto write = state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 10, "data")}));
+    auto write =
+        state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 10, "data")}));
     ASSERT_TRUE(write.has_value()) << ToString(write.error());
 
     auto truncated = state.Truncate(file->inode_id(), 6);
@@ -198,7 +201,9 @@ TEST(MetaStateTest, SnapshotRoundTripPreservesLiveLayout) {
     ASSERT_TRUE(dir.has_value()) << ToString(dir.error());
     auto file = state.CreateFile(dir->inode_id(), "file", 0644, 0, 0);
     ASSERT_TRUE(file.has_value()) << ToString(file.error());
-    auto write = state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 5, "live-key")}));
+    auto write = state.CommitWrite(
+        file->inode_id(), file->version(), Extents({MakeExtent(0, 5, "live-key")})
+    );
     ASSERT_TRUE(write.has_value()) << ToString(write.error());
 
     MetaState restored;

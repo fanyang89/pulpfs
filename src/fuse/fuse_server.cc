@@ -126,12 +126,11 @@ std::string MakeWriterId() {
     std::random_device random;
     const uint64_t random_hi = (static_cast<uint64_t>(random()) << 32) ^ random();
     const uint64_t random_lo = (static_cast<uint64_t>(random()) << 32) ^ random();
-    const uint64_t now = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
+    const uint64_t now =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::system_clock::now().time_since_epoch()
         )
-            .count()
-    );
+                                  .count());
 
     std::ostringstream out;
     out << std::hex << std::setfill('0') << std::setw(16) << random_hi << std::setw(16)
@@ -278,19 +277,19 @@ Result<std::vector<uint8_t>> ReadFromHandle(
     const uint64_t read_end = std::min<uint64_t>(read_begin + size, visible_size);
     output.resize(read_end - read_begin);
 
-    if (auto result = ReadExtentsIntoBuffer(
-            server, handle.layout.extents(), read_begin, read_end, &output
-        ); !result) {
+    if (auto result =
+            ReadExtentsIntoBuffer(server, handle.layout.extents(), read_begin, read_end, &output);
+        !result) {
         return std::unexpected(result.error());
     }
-    if (auto result = ReadExtentsIntoBuffer(
-            server, handle.pending_extents, read_begin, read_end, &output
-        ); !result) {
+    if (auto result =
+            ReadExtentsIntoBuffer(server, handle.pending_extents, read_begin, read_end, &output);
+        !result) {
         return std::unexpected(result.error());
     }
-    if (auto result = ReadExtentsIntoBuffer(
-            server, pending_append_extents, read_begin, read_end, &output
-        ); !result) {
+    if (auto result =
+            ReadExtentsIntoBuffer(server, pending_append_extents, read_begin, read_end, &output);
+        !result) {
         return std::unexpected(result.error());
     }
 

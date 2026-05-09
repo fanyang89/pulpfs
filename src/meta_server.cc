@@ -5,13 +5,12 @@
 #include <utility>
 
 #include <grpc++/grpc++.h>
-
 #include <raftpp/raftor/raftor.h>
 
-#include "pulpfs.grpc.pb.h"
 #include "error.h"
 #include "logging.h"
 #include "meta_service.h"
+#include "pulpfs.grpc.pb.h"
 
 namespace pulpfs {
 
@@ -31,9 +30,7 @@ int MetaServer::Run() {
     auto meta_service = std::make_unique<MetaService>();
     auto* meta_service_ptr = meta_service.get();
 
-    auto raftor_result = raftpp::raftor::Raftor::Create(
-        config_.raftor, std::move(meta_service)
-    );
+    auto raftor_result = raftpp::raftor::Raftor::Create(config_.raftor, std::move(meta_service));
     if (!raftor_result) {
         PULPFS_LOG_ERROR("failed to create raftor: {}", raftor_result.error().ToString());
         return -1;

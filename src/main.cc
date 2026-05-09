@@ -4,8 +4,8 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include "gc_service.h"
 #include "fuse/fuse_server.h"
+#include "gc_service.h"
 #include "logging.h"
 #include "meta_server.h"
 
