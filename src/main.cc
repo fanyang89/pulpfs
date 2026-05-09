@@ -5,12 +5,9 @@
 #include <spdlog/spdlog.h>
 
 #include "gc_service.h"
+#include "fuse/fuse_server.h"
 #include "logging.h"
 #include "meta_server.h"
-
-#ifdef PULPFS_WITH_FUSE
-#include "fuse/fuse_server.h"
-#endif
 
 DEFINE_string(service, "meta", "the service name");
 DEFINE_string(listen_address, "0.0.0.0:3000", "RPC server listen address");
@@ -50,7 +47,6 @@ int main(int argc, char** argv) {
     }
 
     if (FLAGS_service == "fuse") {
-#ifdef PULPFS_WITH_FUSE
         if (FLAGS_mountpoint.empty()) {
             PULPFS_LOG_ERROR("--mountpoint is required for --service=fuse");
             return -1;
@@ -69,10 +65,6 @@ int main(int argc, char** argv) {
 
         FuseServer server(config);
         return server.Run();
-#else
-        PULPFS_LOG_ERROR("fuse service is not built; configure with -DPULPFS_WITH_FUSE=ON");
-        return -1;
-#endif
     }
 
     if (FLAGS_service == "gc") {

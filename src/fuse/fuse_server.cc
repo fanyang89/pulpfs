@@ -21,10 +21,7 @@
 #include <fuse3/fuse_lowlevel.h>
 
 #include "logging.h"
-
-#ifdef PULPFS_WITH_AWS_S3
 #include "object/s3_store.h"
-#endif
 
 namespace pulpfs {
 namespace {
@@ -609,7 +606,6 @@ FuseServer::FuseServer(FuseServerConfig config)
     : config_(std::move(config)), meta_client_(config_.meta_address) {
     parents_.emplace(1, 1);
 
-#ifdef PULPFS_WITH_AWS_S3
     if (!config_.s3_endpoint.empty()) {
         S3StoreConfig s3_config;
         s3_config.endpoint = config_.s3_endpoint;
@@ -619,7 +615,6 @@ FuseServer::FuseServer(FuseServerConfig config)
         s3_config.path_style = true;
         object_store_ = std::make_unique<S3Store>(std::move(s3_config));
     }
-#endif
 }
 
 int FuseServer::Run() {

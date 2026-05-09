@@ -10,10 +10,7 @@
 #include "fuse/meta_client.h"
 #include "logging.h"
 #include "object/object_store.h"
-
-#ifdef PULPFS_WITH_AWS_S3
 #include "object/s3_store.h"
-#endif
 
 namespace pulpfs {
 namespace {
@@ -31,7 +28,6 @@ int64_t NowMs() {
 }
 
 std::unique_ptr<ObjectStore> CreateObjectStore(const GcServiceConfig& config) {
-#ifdef PULPFS_WITH_AWS_S3
     S3StoreConfig s3_config;
     s3_config.endpoint = config.s3_endpoint;
     s3_config.region = config.s3_region;
@@ -39,10 +35,6 @@ std::unique_ptr<ObjectStore> CreateObjectStore(const GcServiceConfig& config) {
     s3_config.verify_ssl = config.s3_verify_ssl;
     s3_config.path_style = true;
     return std::make_unique<S3Store>(std::move(s3_config));
-#else
-    (void)config;
-    return nullptr;
-#endif
 }
 
 }  // namespace
@@ -60,10 +52,6 @@ int GcService::RunOnce() {
     }
 
     auto object_store = CreateObjectStore(config_);
-    if (object_store == nullptr) {
-        PULPFS_LOG_ERROR("gc service requires PULPFS_WITH_AWS_S3=ON");
-        return -1;
-    }
 
     MetaClient meta_client(config_.meta_address);
     auto live_result = meta_client.ListLiveObjects();

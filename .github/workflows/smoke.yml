@@ -49,10 +49,7 @@ jobs:
         env:
           CC: gcc-14
           CXX: g++-14
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DPULPFS_WITH_AWS_S3=ON \
-            -DPULPFS_WITH_FUSE=ON
+        run: cmake -S . -B build -G Ninja
 
       - name: Build
         run: cmake --build build --target pulpfs
