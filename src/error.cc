@@ -3,6 +3,8 @@
 #include <string>
 #include <type_traits>
 
+#include <absl/base/optimization.h>
+
 namespace pulpfs {
 namespace {
 
