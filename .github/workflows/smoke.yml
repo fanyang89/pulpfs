@@ -33,6 +33,7 @@ jobs:
             fuse3 \
             libssl-dev \
             zlib1g-dev \
+            libcurl4-openssl-dev \
             curl
           docker compose version
           test -e /dev/fuse
