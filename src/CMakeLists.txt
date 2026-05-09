@@ -1,5 +1,12 @@
 CPMAddPackage(URI "https://github.com/gflags/gflags.git@2.3.0")
 
+set(BUILD_ONLY "s3" CACHE STRING "AWS SDK components to build" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "Disable AWS SDK tests" FORCE)
+set(AUTORUN_UNIT_TESTS OFF CACHE BOOL "Disable AWS SDK test autorun" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build AWS SDK as static libraries" FORCE)
+set(ENABLE_UNITY_BUILD ON CACHE BOOL "Enable AWS SDK unity build" FORCE)
+set(USE_CRT_HTTP_CLIENT ON CACHE BOOL "Use AWS CRT HTTP client" FORCE)
+
 CPMAddPackage(
     NAME aws-sdk-cpp
     GITHUB_REPOSITORY aws/aws-sdk-cpp
