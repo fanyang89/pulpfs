@@ -25,6 +25,7 @@ pkg_check_modules(FUSE3 REQUIRED IMPORTED_TARGET fuse3)
 
 add_library(pulpfs_core
   error.cc
+  fuse/file_io.cc
   meta_state.cc
 )
 

@@ -4,8 +4,8 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
+#include "fuse/file_io.h"
 #include "fuse/meta_client.h"
 #include "object/object_store.h"
 
@@ -23,16 +23,6 @@ struct FuseServerConfig {
     bool foreground = true;
 };
 
-struct FuseFileHandle {
-    uint64_t inode_id = 0;
-    bool writable = false;
-    bool append = false;
-    FileLayout layout;
-    std::vector<FileExtent> pending_extents;
-    std::vector<FileExtent> pending_append_extents;
-    uint64_t pending_append_length = 0;
-};
-
 class FuseServer {
   public:
     explicit FuseServer(FuseServerConfig config);
@@ -45,6 +35,8 @@ class FuseServer {
 
     [[nodiscard]] const FuseServerConfig& config() const { return config_; }
 
+    [[nodiscard]] std::string MakeObjectKey(uint64_t inode_id, uint64_t offset);
+
     [[nodiscard]] uint64_t ParentOf(uint64_t inode_id);
     void RememberParent(uint64_t inode_id, uint64_t parent_inode_id);
     uint64_t AllocateFileHandle(FuseFileHandle handle);
@@ -55,6 +47,7 @@ class FuseServer {
     FuseServerConfig config_;
     MetaClient meta_client_;
     std::unique_ptr<ObjectStore> object_store_;
+    ObjectKeyGenerator object_key_generator_;
     std::mutex parent_mutex_;
     std::unordered_map<uint64_t, uint64_t> parents_;
     std::mutex handle_mutex_;

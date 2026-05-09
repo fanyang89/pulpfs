@@ -7,15 +7,10 @@
 #include <string.h>
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iomanip>
 #include <memory>
-#include <random>
-#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -122,49 +117,9 @@ uint32_t RequestGid(fuse_req_t req) {
     return ctx == nullptr ? 0 : ctx->gid;
 }
 
-std::string MakeWriterId() {
-    std::random_device random;
-    const uint64_t random_hi = (static_cast<uint64_t>(random()) << 32) ^ random();
-    const uint64_t random_lo = (static_cast<uint64_t>(random()) << 32) ^ random();
-    const uint64_t now =
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                  std::chrono::system_clock::now().time_since_epoch()
-        )
-                                  .count());
-
-    std::ostringstream out;
-    out << std::hex << std::setfill('0') << std::setw(16) << random_hi << std::setw(16)
-        << (random_lo ^ now);
-    return out.str();
-}
-
-const std::string& WriterId() {
-    static const std::string writer_id = MakeWriterId();
-    return writer_id;
-}
-
-uint64_t NextObjectSequence() {
-    static std::atomic<uint64_t> next_sequence{1};
-    return next_sequence.fetch_add(1, std::memory_order_relaxed);
-}
-
-std::string MakeObjectKey(const FuseServer& server, uint64_t inode_id, off_t offset) {
-    std::ostringstream key;
-    if (!server.config().object_prefix.empty()) {
-        key << server.config().object_prefix << "/";
-    }
-    key << "chunks/" << inode_id << "/" << WriterId() << "/" << NextObjectSequence() << "/"
-        << offset;
-    return key.str();
-}
-
 bool IsWritable(int flags) {
     const int access_mode = flags & O_ACCMODE;
     return access_mode == O_WRONLY || access_mode == O_RDWR;
-}
-
-uint64_t ExtentEnd(const FileExtent& extent) {
-    return extent.offset() + extent.length();
 }
 
 Result<void> CommitHandle(FuseServer& server, const std::shared_ptr<FuseFileHandle>& handle) {
@@ -201,99 +156,6 @@ Result<void> CommitHandle(FuseServer& server, const std::shared_ptr<FuseFileHand
         }
     }
     return {};
-}
-
-template <typename Extents>
-Result<void> ReadExtentsIntoBuffer(
-    FuseServer& server, const Extents& extents, uint64_t read_begin, uint64_t read_end,
-    std::vector<uint8_t>* output
-) {
-    for (const auto& extent : extents) {
-        const uint64_t extent_begin = extent.offset();
-        const uint64_t extent_end = ExtentEnd(extent);
-        const uint64_t overlap_begin = std::max(read_begin, extent_begin);
-        const uint64_t overlap_end = std::min(read_end, extent_end);
-        if (overlap_begin >= overlap_end) {
-            continue;
-        }
-
-        auto* object_store = server.object_store();
-        if (object_store == nullptr) {
-            return std::unexpected(MakeError(Unavailable{}, "object store is not configured"));
-        }
-
-        GetObjectRequest request;
-        request.bucket = server.config().bucket;
-        request.key = extent.object_key();
-        request.offset = extent.object_offset() + (overlap_begin - extent_begin);
-        request.length = overlap_end - overlap_begin;
-
-        auto object_result = object_store->GetObject(std::move(request));
-        if (!object_result) {
-            return std::unexpected(object_result.error());
-        }
-
-        const size_t output_offset = overlap_begin - read_begin;
-        const size_t copy_size =
-            std::min<size_t>(object_result->body.size(), overlap_end - overlap_begin);
-        std::copy_n(object_result->body.begin(), copy_size, output->begin() + output_offset);
-    }
-
-    return {};
-}
-
-Result<std::vector<uint8_t>> ReadFromHandle(
-    FuseServer& server, const FuseFileHandle& handle, size_t size, off_t off
-) {
-    std::vector<uint8_t> output(size, 0);
-    if (size == 0) {
-        return output;
-    }
-    if (off < 0) {
-        return std::unexpected(MakeError(InvalidArgument{}, "negative read offset"));
-    }
-
-    uint64_t visible_size = handle.layout.attrs().size();
-    for (const auto& extent : handle.pending_extents) {
-        visible_size = std::max(visible_size, ExtentEnd(extent));
-    }
-
-    std::vector<FileExtent> pending_append_extents;
-    pending_append_extents.reserve(handle.pending_append_extents.size());
-    const uint64_t append_start = handle.layout.attrs().size();
-    for (const auto& extent : handle.pending_append_extents) {
-        FileExtent visible_extent = extent;
-        visible_extent.set_offset(append_start + extent.offset());
-        visible_size = std::max(visible_size, ExtentEnd(visible_extent));
-        pending_append_extents.push_back(std::move(visible_extent));
-    }
-
-    if (static_cast<uint64_t>(off) >= visible_size) {
-        output.clear();
-        return output;
-    }
-
-    const uint64_t read_begin = static_cast<uint64_t>(off);
-    const uint64_t read_end = std::min<uint64_t>(read_begin + size, visible_size);
-    output.resize(read_end - read_begin);
-
-    if (auto result =
-            ReadExtentsIntoBuffer(server, handle.layout.extents(), read_begin, read_end, &output);
-        !result) {
-        return std::unexpected(result.error());
-    }
-    if (auto result =
-            ReadExtentsIntoBuffer(server, handle.pending_extents, read_begin, read_end, &output);
-        !result) {
-        return std::unexpected(result.error());
-    }
-    if (auto result =
-            ReadExtentsIntoBuffer(server, pending_append_extents, read_begin, read_end, &output);
-        !result) {
-        return std::unexpected(result.error());
-    }
-
-    return output;
 }
 
 void PulpfsLookup(fuse_req_t req, fuse_ino_t parent, const char* name) {
@@ -555,7 +417,13 @@ void PulpfsRead(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, fuse_fil
         return;
     }
 
-    auto result = ReadFromHandle(*server, *handle, size, off);
+    auto* object_store = server->object_store();
+    if (object_store == nullptr) {
+        fuse_reply_err(req, EIO);
+        return;
+    }
+
+    auto result = ReadFromHandle(*object_store, server->config().bucket, *handle, size, off);
     if (!result) {
         fuse_reply_err(req, ToErrno(result.error()));
         return;
@@ -582,7 +450,7 @@ void PulpfsWrite(
 
     PutObjectRequest request;
     request.bucket = server->config().bucket;
-    request.key = MakeObjectKey(*server, ino, static_cast<off_t>(write_offset));
+    request.key = server->MakeObjectKey(ino, write_offset);
     const std::string object_key = request.key;
     request.body.assign(
         reinterpret_cast<const uint8_t*>(buf), reinterpret_cast<const uint8_t*>(buf) + size
@@ -696,6 +564,10 @@ FuseServer::FuseServer(FuseServerConfig config)
         s3_config.path_style = true;
         object_store_ = std::make_unique<S3Store>(std::move(s3_config));
     }
+}
+
+std::string FuseServer::MakeObjectKey(uint64_t inode_id, uint64_t offset) {
+    return object_key_generator_.MakeObjectKey(config_.object_prefix, inode_id, offset);
 }
 
 int FuseServer::Run() {
