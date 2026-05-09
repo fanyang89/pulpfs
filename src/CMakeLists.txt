@@ -23,15 +23,30 @@ CPMAddPackage(
 
 pkg_check_modules(FUSE3 REQUIRED IMPORTED_TARGET fuse3)
 
+add_library(pulpfs_core
+  error.cc
+  meta_state.cc
+)
+
+target_compile_definitions(pulpfs_core PUBLIC
+    PULPFS_SOURCE_ROOT="${PROJECT_SOURCE_DIR}/"
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
+)
+
+target_include_directories(pulpfs_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+target_link_libraries(pulpfs_core PUBLIC
+    pulpfs_proto
+    raftpp
+)
+
 add_executable(pulpfs
   main.cc
   meta_server.cc
   meta_service.cc
-  meta_state.cc
   fuse/meta_client.cc
   fuse/fuse_server.cc
   gc_service.cc
-  error.cc
   object/s3_store.cc
 )
 
@@ -44,9 +59,9 @@ target_include_directories(pulpfs PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(pulpfs PRIVATE "${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include")
 
 target_link_libraries(pulpfs PRIVATE
+    pulpfs_core
     gflags::gflags
     spdlog::spdlog
-    pulpfs_proto
     raftor
     aws-cpp-sdk-s3
     aws-cpp-sdk-core

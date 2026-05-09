@@ -52,6 +52,14 @@ int main(int argc, char** argv) {
             PULPFS_LOG_ERROR("--mountpoint is required for --service=fuse");
             return -1;
         }
+        if (FLAGS_s3_endpoint.empty()) {
+            PULPFS_LOG_ERROR("--s3_endpoint is required for --service=fuse");
+            return -1;
+        }
+        if (FLAGS_s3_bucket.empty()) {
+            PULPFS_LOG_ERROR("--s3_bucket is required for --service=fuse");
+            return -1;
+        }
 
         FuseServerConfig config;
         config.mountpoint = FLAGS_mountpoint;

@@ -132,6 +132,15 @@ docker run --rm -v "$MC_CONFIG_DIR:/root/.mc" --entrypoint chown pgsty/mc \
 META_PID=$!
 wait_tcp_ready 127.0.0.1 3000
 
+if "$PULPFS_BIN" --service=fuse --mountpoint="$MOUNT_DIR" --meta_address=127.0.0.1:3000 \
+    --s3_bucket="$BUCKET" >"$WORK_DIR/fuse-missing-endpoint.log" 2>&1; then
+    fail "fuse without --s3_endpoint unexpectedly succeeded"
+fi
+if "$PULPFS_BIN" --service=fuse --mountpoint="$MOUNT_DIR" --meta_address=127.0.0.1:3000 \
+    --s3_endpoint="$MINIO_ENDPOINT" >"$WORK_DIR/fuse-missing-bucket.log" 2>&1; then
+    fail "fuse without --s3_bucket unexpectedly succeeded"
+fi
+
 AWS_ACCESS_KEY_ID="$MINIO_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$MINIO_SECRET_KEY" \
 "$PULPFS_BIN" \
     --service=fuse \
@@ -149,6 +158,39 @@ wait_mount_ready
 mkdir "$MOUNT_DIR/dir"
 printf 'hello' >"$MOUNT_DIR/dir/file"
 assert_eq "hello" "$(cat "$MOUNT_DIR/dir/file")" "read after write"
+
+python3 - "$MOUNT_DIR/read-before-close" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_TRUNC, 0o644)
+try:
+    os.write(fd, b"pending")
+    os.lseek(fd, 0, os.SEEK_SET)
+    data = os.read(fd, 7)
+    if data != b"pending":
+        raise SystemExit(f"read before close: expected b'pending', got {data!r}")
+finally:
+    os.close(fd)
+PY
+
+printf 'base' >"$MOUNT_DIR/append-before-close"
+python3 - "$MOUNT_DIR/append-before-close" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+fd = os.open(path, os.O_RDWR | os.O_APPEND)
+try:
+    os.write(fd, b"-tail")
+    os.lseek(fd, 0, os.SEEK_SET)
+    data = os.read(fd, 9)
+    if data != b"base-tail":
+        raise SystemExit(f"append read before close: expected b'base-tail', got {data!r}")
+finally:
+    os.close(fd)
+PY
 
 printf 'old-value' >"$MOUNT_DIR/trunc"
 printf 'new' >"$MOUNT_DIR/trunc"
