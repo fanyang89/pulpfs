@@ -124,6 +124,56 @@ TEST(MetaStateTest, RejectsRenameDirectoryIntoDescendant) {
     );
 }
 
+TEST(MetaStateTest, RenameOverwritesFileTargetAndRemovesTargetLayout) {
+    MetaState state;
+    auto source = state.CreateFile(MetaState::kRootInodeId, "source", 0644, 0, 0);
+    ASSERT_TRUE(source.has_value()) << ToString(source.error());
+    auto target = state.CreateFile(MetaState::kRootInodeId, "target", 0644, 0, 0);
+    ASSERT_TRUE(target.has_value()) << ToString(target.error());
+
+    ASSERT_TRUE(
+        state.CommitWrite(source->inode_id(), source->version(), Extents({MakeExtent(0, 3, "src")}))
+            .has_value()
+    );
+    ASSERT_TRUE(
+        state.CommitWrite(target->inode_id(), target->version(), Extents({MakeExtent(0, 3, "dst")}))
+            .has_value()
+    );
+
+    auto renamed = state.Rename(MetaState::kRootInodeId, "source", MetaState::kRootInodeId, "target");
+    ASSERT_TRUE(renamed.has_value()) << ToString(renamed.error());
+    EXPECT_EQ(renamed->inode_id(), source->inode_id());
+    ExpectErrorKind<NotFound>(state.Lookup(MetaState::kRootInodeId, "source"));
+
+    auto lookup = state.Lookup(MetaState::kRootInodeId, "target");
+    ASSERT_TRUE(lookup.has_value()) << ToString(lookup.error());
+    EXPECT_EQ(lookup->inode_id(), source->inode_id());
+    EXPECT_EQ(state.ListLiveObjects(), std::vector<std::string>({"src"}));
+}
+
+TEST(MetaStateTest, RenameRejectsDirectoryOverFileAndFileOverDirectory) {
+    MetaState state;
+    auto dir = state.Mkdir(MetaState::kRootInodeId, "dir", 0755, 0, 0);
+    ASSERT_TRUE(dir.has_value()) << ToString(dir.error());
+    auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
+    ASSERT_TRUE(file.has_value()) << ToString(file.error());
+
+    ExpectErrorKind<NotDirectory>(
+        state.Rename(MetaState::kRootInodeId, "dir", MetaState::kRootInodeId, "file")
+    );
+    ExpectErrorKind<IsDirectory>(
+        state.Rename(MetaState::kRootInodeId, "file", MetaState::kRootInodeId, "dir")
+    );
+}
+
+TEST(MetaStateTest, RmdirRejectsFile) {
+    MetaState state;
+    auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
+    ASSERT_TRUE(file.has_value()) << ToString(file.error());
+
+    ExpectErrorKind<NotDirectory>(state.Rmdir(MetaState::kRootInodeId, "file"));
+}
+
 TEST(MetaStateTest, CommitWriteMergesOverlappingExtents) {
     MetaState state;
     auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
@@ -195,6 +245,49 @@ TEST(MetaStateTest, TruncateSlicesExtentsAndUpdatesSize) {
     EXPECT_EQ(layout->attrs().size(), 6U);
 }
 
+TEST(MetaStateTest, LiveObjectsExcludeOverwrittenTruncatedAndUnlinkedExtents) {
+    MetaState state;
+    auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
+    ASSERT_TRUE(file.has_value()) << ToString(file.error());
+
+    auto first = state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 8, "old")}));
+    ASSERT_TRUE(first.has_value()) << ToString(first.error());
+    auto overwrite = state.CommitWrite(file->inode_id(), first->version(), Extents({MakeExtent(0, 8, "new")}));
+    ASSERT_TRUE(overwrite.has_value()) << ToString(overwrite.error());
+    EXPECT_EQ(state.ListLiveObjects(), std::vector<std::string>({"new"}));
+
+    auto truncate = state.Truncate(file->inode_id(), 0);
+    ASSERT_TRUE(truncate.has_value()) << ToString(truncate.error());
+    EXPECT_TRUE(state.ListLiveObjects().empty());
+
+    auto rewrite = state.CommitWrite(file->inode_id(), truncate->version(), Extents({MakeExtent(0, 4, "live")}));
+    ASSERT_TRUE(rewrite.has_value()) << ToString(rewrite.error());
+    EXPECT_EQ(state.ListLiveObjects(), std::vector<std::string>({"live"}));
+
+    auto unlink = state.Unlink(MetaState::kRootInodeId, "file");
+    ASSERT_TRUE(unlink.has_value()) << ToString(unlink.error());
+    EXPECT_TRUE(state.ListLiveObjects().empty());
+}
+
+TEST(MetaStateTest, RejectsInvalidCommittedAndAppendedExtents) {
+    MetaState state;
+    auto file = state.CreateFile(MetaState::kRootInodeId, "file", 0644, 0, 0);
+    ASSERT_TRUE(file.has_value()) << ToString(file.error());
+
+    ExpectErrorKind<InvalidArgument>(
+        state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 0, "empty")}))
+    );
+    ExpectErrorKind<InvalidArgument>(
+        state.CommitWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 1, "")}))
+    );
+    ExpectErrorKind<InvalidArgument>(
+        state.AppendWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 0, "empty")}))
+    );
+    ExpectErrorKind<InvalidArgument>(
+        state.AppendWrite(file->inode_id(), file->version(), Extents({MakeExtent(0, 1, "")}))
+    );
+}
+
 TEST(MetaStateTest, SnapshotRoundTripPreservesLiveLayout) {
     MetaState state;
     auto dir = state.Mkdir(MetaState::kRootInodeId, "dir", 0755, 0, 0);
@@ -219,6 +312,30 @@ TEST(MetaStateTest, SnapshotRoundTripPreservesLiveLayout) {
 
     auto live_objects = restored.ListLiveObjects();
     EXPECT_EQ(live_objects, std::vector<std::string>({"live-key"}));
+}
+
+TEST(MetaStateTest, RestoreSnapshotRejectsDanglingDentry) {
+    MetaState state;
+    MetaSnapshot snapshot;
+    ASSERT_TRUE(snapshot.ParseFromString(state.SerializeSnapshot()));
+    auto* dentry = snapshot.add_dentries();
+    dentry->set_parent_inode_id(MetaState::kRootInodeId);
+    dentry->set_name("dangling");
+    dentry->set_child_inode_id(42);
+
+    MetaState restored;
+    ExpectErrorKind<InvalidArgument>(restored.RestoreSnapshot(snapshot.SerializeAsString()));
+}
+
+TEST(MetaStateTest, RestoreSnapshotRejectsDanglingLayout) {
+    MetaState state;
+    MetaSnapshot snapshot;
+    ASSERT_TRUE(snapshot.ParseFromString(state.SerializeSnapshot()));
+    auto* layout = snapshot.add_layouts();
+    layout->set_inode_id(42);
+
+    MetaState restored;
+    ExpectErrorKind<InvalidArgument>(restored.RestoreSnapshot(snapshot.SerializeAsString()));
 }
 
 }  // namespace

@@ -64,13 +64,13 @@ class FakeObjectStore final : public ObjectStore {
     std::map<std::pair<std::string, std::string>, std::string> objects_;
 };
 
-FileExtent MakeExtent(uint64_t offset, uint64_t length, std::string key) {
+FileExtent MakeExtent(uint64_t offset, uint64_t length, std::string key, uint64_t object_offset = 0) {
     FileExtent extent;
     extent.set_offset(offset);
     extent.set_length(length);
     extent.set_object_key(std::move(key));
     extent.set_object_size(length);
-    extent.set_object_offset(0);
+    extent.set_object_offset(object_offset);
     return extent;
 }
 
@@ -90,6 +90,18 @@ TEST(FuseFileIoTest, ObjectKeysUsePrefixWriterAndSequence) {
     EXPECT_EQ(generator.MakeObjectKey("pulpfs", 7, 9), "pulpfs/chunks/7/writer/1/9");
     EXPECT_EQ(generator.MakeObjectKey("pulpfs", 7, 10), "pulpfs/chunks/7/writer/2/10");
     EXPECT_EQ(generator.MakeObjectKey("", 8, 0), "chunks/8/writer/3/0");
+}
+
+TEST(FuseFileIoTest, DifferentWriterIdsProduceDisjointObjectKeys) {
+    ObjectKeyGenerator first("writer-a");
+    ObjectKeyGenerator second("writer-b");
+
+    const auto first_key = first.MakeObjectKey("pulpfs", 7, 9);
+    const auto second_key = second.MakeObjectKey("pulpfs", 7, 9);
+
+    EXPECT_NE(first_key, second_key);
+    EXPECT_EQ(first_key, "pulpfs/chunks/7/writer-a/1/9");
+    EXPECT_EQ(second_key, "pulpfs/chunks/7/writer-b/1/9");
 }
 
 TEST(FuseFileIoTest, ReadsCommittedExtents) {
@@ -116,6 +128,32 @@ TEST(FuseFileIoTest, OverlaysPendingPositionedWrites) {
     EXPECT_EQ(ToString(*result), "aaBBaa");
 }
 
+TEST(FuseFileIoTest, PendingPositionedWritesExtendVisibleSize) {
+    FakeObjectStore store;
+    store.PutBytes("bucket", "base", "abc");
+    store.PutBytes("bucket", "pending", "de");
+    auto handle = MakeHandle(3);
+    *handle.layout.add_extents() = MakeExtent(0, 3, "base");
+    handle.pending_extents.push_back(MakeExtent(3, 2, "pending"));
+
+    auto result = ReadFromHandle(store, "bucket", handle, 8, 0);
+    ASSERT_TRUE(result.has_value()) << ToString(result.error());
+    EXPECT_EQ(ToString(*result), "abcde");
+}
+
+TEST(FuseFileIoTest, PendingPositionedWritesOverlayReadSubrange) {
+    FakeObjectStore store;
+    store.PutBytes("bucket", "base", "abcdef");
+    store.PutBytes("bucket", "pending", "XYZ");
+    auto handle = MakeHandle(6);
+    *handle.layout.add_extents() = MakeExtent(0, 6, "base");
+    handle.pending_extents.push_back(MakeExtent(1, 3, "pending"));
+
+    auto result = ReadFromHandle(store, "bucket", handle, 3, 2);
+    ASSERT_TRUE(result.has_value()) << ToString(result.error());
+    EXPECT_EQ(ToString(*result), "YZe");
+}
+
 TEST(FuseFileIoTest, OverlaysPendingAppendWrites) {
     FakeObjectStore store;
     store.PutBytes("bucket", "base", "base");
@@ -137,6 +175,36 @@ TEST(FuseFileIoTest, ReturnsZerosForSparseHoles) {
     auto result = ReadFromHandle(store, "bucket", handle, 4, 0);
     ASSERT_TRUE(result.has_value()) << ToString(result.error());
     EXPECT_EQ(*result, std::vector<uint8_t>({0, 0, 0, 0}));
+}
+
+TEST(FuseFileIoTest, RespectsObjectOffsetWhenReadingExtents) {
+    FakeObjectStore store;
+    store.PutBytes("bucket", "packed", "0123456789");
+    auto handle = MakeHandle(4);
+    *handle.layout.add_extents() = MakeExtent(0, 4, "packed", 3);
+
+    auto result = ReadFromHandle(store, "bucket", handle, 4, 0);
+    ASSERT_TRUE(result.has_value()) << ToString(result.error());
+    EXPECT_EQ(ToString(*result), "3456");
+}
+
+TEST(FuseFileIoTest, ReturnsEmptyWhenReadingBeyondVisibleSize) {
+    FakeObjectStore store;
+    auto handle = MakeHandle(4);
+
+    auto result = ReadFromHandle(store, "bucket", handle, 4, 4);
+    ASSERT_TRUE(result.has_value()) << ToString(result.error());
+    EXPECT_TRUE(result->empty());
+}
+
+TEST(FuseFileIoTest, PropagatesMissingObjectErrors) {
+    FakeObjectStore store;
+    auto handle = MakeHandle(4);
+    *handle.layout.add_extents() = MakeExtent(0, 4, "missing");
+
+    auto result = ReadFromHandle(store, "bucket", handle, 4, 0);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_TRUE(std::holds_alternative<NotFound>(result.error().kind));
 }
 
 TEST(FuseFileIoTest, RejectsNegativeReadOffset) {
