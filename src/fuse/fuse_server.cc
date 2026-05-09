@@ -632,8 +632,6 @@ int FuseServer::Run() {
     fuse_opt_add_arg(&args, "pulpfs");
     fuse_opt_add_arg(&args, "-o");
     fuse_opt_add_arg(&args, "fsname=pulpfs");
-    fuse_opt_add_arg(&args, "-o");
-    fuse_opt_add_arg(&args, "default_permissions");
 
     auto ops = MakeOps();
     fuse_session* session = fuse_session_new(&args, &ops, sizeof(ops), this);

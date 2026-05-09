@@ -1,0 +1,61 @@
+name: smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            g++-14 \
+            ninja-build \
+            pkg-config \
+            cmake \
+            libgrpc++-dev \
+            protobuf-compiler \
+            protobuf-compiler-grpc \
+            libprotobuf-dev \
+            libfuse3-dev \
+            fuse3 \
+            libssl-dev \
+            zlib1g-dev \
+            curl
+          docker compose version
+          test -e /dev/fuse
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: .cache/cpm
+          key: ${{ runner.os }}-cpm-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-cpm-
+
+      - name: Configure
+        env:
+          CC: gcc-14
+          CXX: g++-14
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DPULPFS_WITH_AWS_S3=ON \
+            -DPULPFS_WITH_FUSE=ON
+
+      - name: Build
+        run: cmake --build build --target pulpfs
+
+      - name: Run smoke test
+        run: tests/e2e/smoke.sh build/src/pulpfs
