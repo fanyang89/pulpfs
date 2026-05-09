@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
         config.grpc_address = FLAGS_listen_address;
         config.raftor.node_id = FLAGS_node_id;
         config.raftor.listen_addr = FLAGS_raft_listen_address;
+        config.raftor.transport_kind = raftpp::raftor::TransportKind::Noop;
         config.raftor.data_dir = FLAGS_raft_data_dir;
 
         MetaServer server(config);
